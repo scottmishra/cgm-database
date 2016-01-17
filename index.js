@@ -60,6 +60,25 @@ var Trends = (function ( ) {
   });
   return trends;
 })( );
+
+var mysql = require("mysql");
+
+var con = mysql.createConnection({
+        host: "localhost",
+        user:"root",
+        password:"",
+        database:"CGM-Data"
+        });
+
+con.connect(function(err){
+    if(err){
+        console.log('Error connecting to DB');
+        return;
+    }
+    console.log('Connection to DB established')
+    })
+
+
 function directionToTrend (direction) {
   var trend = 8;
   if (direction in DIRECTIONS) {
@@ -253,11 +272,10 @@ function engine (opts) {
           });
         }
         ns_config.entries = entries;
+        updateSQL(glucose);
         // Send data to Nightscout.
-        report_to_nightscout(ns_config, function (err, response, body) {
-          console.log("Nightscout upload", 'error', err, 'status', response.statusCode, body);
-
-        });
+        //report_to_nightscout(ns_config, function (err, response, body) {
+        //  console.log("Nightscout upload", 'error', err, 'status', response.statusCode, body); });
       }
     }
   }
@@ -280,6 +298,29 @@ function readENV(varName, defaultValue) {
         || process.env[varName.toLowerCase()];
 
     return value || defaultValue;
+}
+
+function updateSQL(data){
+ if (data) {
+      // Translate to Nightscout data.
+      var entries = data.map(dex_to_entry);
+      console.log('Data', entries[0].sgv);
+      for(var i = 0; i < entries.length; i++){
+        var update = {
+            glucose:entries[i].sgv,
+            date:entries[i].date,
+            type:entries[i].type,
+            trend:entries[i].trend,
+            direction:entries[i].direction,
+            device:entries[i].device
+            };
+        con.query('INSERT INTO CGData SET ?',update,function(err,res){
+            if(err){
+                console.log('Couldnt update SQL for ' + entries[i]);
+            }
+        })
+      }
+ }
 }
 
 // If run from commandline, run the whole program.
@@ -338,16 +379,19 @@ if (!module.parent) {
           // Translate to Nightscout data.
           var entries = glucose.map(dex_to_entry);
           console.log('Entries', entries);
+          updateSQL(glucose);
           if (ns_config.endpoint) {
             ns_config.entries = entries;
             // Send data to Nightscout.
-            report_to_nightscout(ns_config, function (err, response, body) {
-              console.log("Nightscout upload", 'error', err, 'status', response.statusCode, body);
-
-            });
+//            report_to_nightscout(ns_config, function (err, response, body) {
+//              console.log("Nightscout upload", 'error', err, 'status', response.statusCode, body);
+//            });
           }
         }
       });
+      break;
+    case 'test':
+      console.log('TESTING');
       break;
     default:
       setInterval(engine(meta), interval);
